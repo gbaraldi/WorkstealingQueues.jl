@@ -1,6 +1,7 @@
 using WorkstealingQueues
 
 mutable struct Foo
+    origin::Int
 end
 
 mutable struct Counter
@@ -16,14 +17,14 @@ const objvecs     = ntuple(_->Vector{Foo}(), N)
 const initobjs    = Vector{Foo}()
 const finobjs     = Vector{Foo}()
 
-
 function print_stats()
     push_tot = 0
     pop_tot = 0
     for i in 1:N
         push_tot += pushcounter[i].counter
         pop_tot += popcounter[i].counter
-        println("pushes[$i]: ", pushcounter[i].counter, " pops[$i]: ", popcounter[i].counter)
+        stolen = count(f->f.origin!=i, objvecs[i])
+        println("pushes[$i]: ", pushcounter[i].counter, " pops[$i]: ", popcounter[i].counter, " stolen[$i]: ", stolen)
     end
     println("pushes: ", push_tot, " pops: ", pop_tot)
 end
@@ -65,7 +66,7 @@ end
 
 for j in 2:N
     for i in 1:rand(100:5000)
-        foo = Foo()
+        foo = Foo(j)
         push!(initobjs, foo)
         @atomic  pushcounter[j].counter += 1
         pushfirst!(wsqueues[j], foo)
