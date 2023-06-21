@@ -1,7 +1,6 @@
 using WorkstealingQueues
 
 mutable struct Foo
-    should_push::Bool
 end
 
 mutable struct Counter
@@ -35,40 +34,36 @@ end
 
 function do_work(n::Int64)
     wsqueue = wsqueues[n]
-    cnt = 1
+    cnt = 0
     failed_steals = 0
     while failed_steals < 10
         sleep(0.001)
         foo = popfirst!(wsqueue)
         if foo === nothing
-            for i in 1:4
+            for _ in 1:4
+                cnt = mod1(cnt + 1, 4)
                 if cnt == n
-                    cnt = mod1(cnt + 1, 4)
                     continue
                 end
                 foo = steal!(wsqueues[cnt])
-                cnt = mod1(cnt + 1, 4)
                 if foo !== nothing
                     failed_steals = 0
-                    @goto found
+                    break
                 end
                 failed_steals += 1
             end
-            continue
+            if foo === nothing
+                continue
+            end
         end
-        @label found
         push!(objvecs[n], foo)
         @atomic popcounter[n].counter += 1
-        if foo.should_push
-            @atomic  pushcounter[n].counter += 1
-            pushlast!(wsqueue, Foo(rand() > 0.51))
-        end
     end
 end
 
 for j in 2:4
     for i in 1:rand(100:5000)
-        foo = Foo(rand() > 0.8)
+        foo = Foo()
         push!(initobjs, foo)
         @atomic  pushcounter[j].counter += 1
         pushfirst!(wsqueues[j], foo)
