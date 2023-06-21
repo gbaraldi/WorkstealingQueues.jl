@@ -8,7 +8,7 @@ mutable struct Counter
     @atomic counter::Int64
 end
 
-const N = 4*Threads.nthreads()
+const N = 128*Threads.nthreads()
 
 const pushcounter = ntuple(_->Counter(0), N)
 const popcounter  = ntuple(_->Counter(0), N)

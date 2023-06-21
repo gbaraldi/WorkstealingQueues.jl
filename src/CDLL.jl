@@ -10,9 +10,16 @@ mutable struct Node{T}
     const value::Union{T, Nothing}
     @atomic next::Union{Node{T}, Nothing}
     @atomic prev::Union{Node{T}, Nothing}
+    
+    Node{T}(value, next, prev) where T = new{T}(value, next, prev)
+    function Node(next::Node{T}) where T # Marker
+        this = new{T}(nothing, next, nothing)
+        @atomic this.prev = this
+        return this
+    end
 end
 
-Node(next::Node) = Node(nothing, next, nothing) # Marker node
+Node(value::T, next, prev) where T = Node{T}(value, next, prev)
 
 get_next(node::Node) = @atomic node.next
 set_next(node::Node, next) = @atomic node.next = next
