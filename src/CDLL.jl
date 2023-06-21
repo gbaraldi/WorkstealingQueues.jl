@@ -1,7 +1,9 @@
 
 # Java based concurrent doubly linked list
 module JavaList
+    export ConcurrentDoublyLinkedList, CDLL
 
+import ..WorkstealingQueues: push!, pushfirst!, pushlast!, pop!, steal!
 
 
 mutable struct Node{T}
