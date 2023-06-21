@@ -1,7 +1,7 @@
 
 # Java based concurrent doubly linked list
 module JavaList
-    export ConcurrentDoublyLinkedList, push!, pushfirst!, pop!, steal!
+
 
 
 mutable struct Node{T}
@@ -131,11 +131,11 @@ function forward(node::Node)
 end
 
 function back(node::Node)
-    b = predecessor(node)
-    return (b === nothing || is_special(b)) ? nothing : b
+    f = predecessor(node)
+    return (f === nothing || is_special(f)) ? nothing : f
 end
 
-@inline function append!(node::Node{T}, val::T) where {T}
+function append!(node::Node{T}, val::T) where {T}
     while true
         f = get_next(node)
         if (f === nothing || is_marker(f))
@@ -209,7 +209,7 @@ end
 
 const CDLL = ConcurrentDoublyLinkedList
 
-function pushfirst!(cdll::CDLL{T}, val::T) where {T}
+function Base.pushfirst!(cdll::CDLL{T}, val::T) where {T}
     while (append!((@atomic cdll.header), val) === nothing)
     end
 end
@@ -219,14 +219,14 @@ function pushlast!(cdll::CDLL{T}, val::T) where {T}
     end
 end
 
-function popfirst!(cdll::CDLL)
+function Base.popfirst!(cdll::CDLL)
     while true
         n = successor((@atomic cdll.header))
         if !usable(n)
             return nothing
         end
         if delete!(n)
-            return  n.value
+            return n.value
         end
     end
 end
@@ -244,6 +244,8 @@ function poplast!(cdll::CDLL)
 end
 
 steal!(cdll::CDLL) = poplast!(cdll)
-isempty(cdll::CDLL) = !usable(successor(@atomic cdll.header))
+Base.isempty(cdll::CDLL) = !usable(successor(@atomic cdll.header))
+
+export CDLL, pushlast!, pushfirst!, pop!, steal!, isempty
 
 end
