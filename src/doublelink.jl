@@ -10,9 +10,9 @@ module DoubleLink
 mutable struct Node{T}
     next::Union{Nothing, Node{T}}
     prev::Union{Nothing, Node{T}}
-    const item::T
+    const item::Union{Nothing, T}
     Node(item::T) where T = new{T}(nothing, nothing, item)
-    Node{T}() where T = new{T}(nothing, nothing)
+    Node{T}() where T = new{T}(nothing, nothing, nothing)
 end
 
 mutable struct DoubleLinkQueue{T}
@@ -65,7 +65,7 @@ function dequeue!(q::DoubleLinkQueue{T}) where T
         if success
             lnext.prev = lnext
             lhead.next = lhead
-            return lnext.item
+            return lnext.item::T
         end
     end
 end
