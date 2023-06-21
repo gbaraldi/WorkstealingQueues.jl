@@ -7,18 +7,20 @@ mutable struct Counter
     @atomic counter::Int64
 end
 
-const pushcounter = (Counter(0), Counter(0), Counter(0), Counter(0))
-const popcounter = (Counter(0), Counter(0), Counter(0), Counter(0))
-const wsqueues = (CDLL{Foo}(), CDLL{Foo}(), CDLL{Foo}(), CDLL{Foo}())
-const objvecs = (Vector{Foo}(), Vector{Foo}(), Vector{Foo}(), Vector{Foo}())
-const initobjs = Vector{Foo}()
-const finobjs = Vector{Foo}()
+const N = Threads.nthreads()
+
+const pushcounter = ntuple(_->Counter(0), N)
+const popcounter  = ntuple(_->Counter(0), N)
+const wsqueues    = ntuple(_->CDLL{Foo}(), N)
+const objvecs     = ntuple(_->Vector{Foo}(), N)
+const initobjs    = Vector{Foo}()
+const finobjs     = Vector{Foo}()
 
 
 function print_stats()
     push_tot = 0
     pop_tot = 0
-    for i in 1:4
+    for i in 1:N
         push_tot += pushcounter[i].counter
         pop_tot += popcounter[i].counter
         println("pushes[$i]: ", pushcounter[i].counter, " pops[$i]: ", popcounter[i].counter)
@@ -27,7 +29,7 @@ function print_stats()
 end
 
 function combine_objs()
-    for i in 1:4
+    for i in 1:N
         append!(finobjs, objvecs[i])
     end
 end
@@ -40,8 +42,8 @@ function do_work(n::Int64)
         sleep(0.001)
         foo = popfirst!(wsqueue)
         if foo === nothing
-            for _ in 1:4
-                cnt = mod1(cnt + 1, 4)
+            for _ in 1:N
+                cnt = mod1(cnt + 1, N)
                 if cnt == n
                     continue
                 end
@@ -61,7 +63,7 @@ function do_work(n::Int64)
     end
 end
 
-for j in 2:4
+for j in 2:N
     for i in 1:rand(100:5000)
         foo = Foo()
         push!(initobjs, foo)
@@ -72,7 +74,7 @@ end
 
 function parallel_work()
     @sync begin
-        for i in 1:4
+        for i in 1:N
             Threads.@spawn do_work(i)
         end
     end
