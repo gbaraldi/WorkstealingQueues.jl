@@ -8,7 +8,7 @@ mutable struct Counter
     @atomic counter::Int64
 end
 
-const N = 128*Threads.nthreads()
+const N = 1024*Threads.nthreads()
 
 const pushcounter = ntuple(_->Counter(0), N)
 const popcounter  = ntuple(_->Counter(0), N)
@@ -40,7 +40,8 @@ end
 function do_work(n::Int64)
     wsqueue = wsqueues[n]
     thief = false
-    while (@atomic DONE.counter) < N 
+    steal_attempts = 0
+    while (@atomic DONE.counter) < N || (thief && steal_attempts > 10N)
         yield()
         foo = popfirst!(wsqueue)
         if foo === nothing
@@ -56,9 +57,11 @@ function do_work(n::Int64)
                 end
                 foo = steal!(wsqueues[victim])
                 if foo !== nothing
+                    steal_attempts = 0
                     break
                 end
                 yield()
+                steal_attempts += 1
             end
             if foo === nothing
                 continue
