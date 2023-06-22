@@ -107,6 +107,8 @@ function main(::Type{Queue}, N = 16*Threads.nthreads(); verbose=false) where Que
 end
 
 if !isinteractive()
+    main(CDLL)
+    main(BaseQueue)
     @time main(CDLL)
     @time main(BaseQueue)
 end
