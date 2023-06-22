@@ -8,7 +8,7 @@ mutable struct Counter
     @atomic counter::Int64
 end
 
-function main(::Type{Queue}, N = 16*Threads.nthreads(); verbose=false) where Queue
+function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
     pushcounter = ntuple(_->Counter(0), N)
     popcounter  = ntuple(_->Counter(0), N)
     wsqueues    = ntuple(_->Queue{Foo}(), N)
@@ -91,9 +91,9 @@ function main(::Type{Queue}, N = 16*Threads.nthreads(); verbose=false) where Que
         end
     end
 
-   verbose && print_stats()
+    verbose && print_stats()
 
-    parallel_work()
+    @time parallel_work()
 
     for queue in wsqueues
         isempty(queue) || println("queue not empty")
@@ -109,6 +109,6 @@ end
 if !isinteractive()
     main(CDLL)
     main(BaseQueue)
-    @time main(CDLL)
-    @time main(BaseQueue)
+    main(CDLL)
+    main(BaseQueue)
 end
