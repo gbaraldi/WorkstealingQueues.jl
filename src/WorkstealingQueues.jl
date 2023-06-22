@@ -15,4 +15,8 @@ include("CDLL.jl")
 import .JavaList: CDLL
 export CDLL
 
+include("base.jl")
+import .JLBase: BaseQueue
+export BaseQueue
+
 end
