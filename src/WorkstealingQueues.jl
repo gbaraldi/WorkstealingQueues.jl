@@ -19,4 +19,8 @@ include("base.jl")
 import .JLBase: BaseQueue
 export BaseQueue
 
+include("CLL.jl")
+import .CLL: WSQueue
+export WSQueue
+
 end

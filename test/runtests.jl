@@ -42,7 +42,7 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
         steal_attempts = 0
         while (@atomic DONE.counter) < N || (thief && steal_attempts > 10N)
             yield()
-            foo = popfirst!(wsqueue)
+            foo = pop!(wsqueue)
             if foo === nothing
                 # become thief
                 if !thief
@@ -79,7 +79,7 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
             foo = Foo(j)
             push!(initobjs, foo)
             @atomic  pushcounter[j].counter += 1
-            pushfirst!(wsqueues[j], foo)
+            push!(wsqueues[j], foo)
         end
     end
 
@@ -109,6 +109,8 @@ end
 if !isinteractive()
     main(CDLL)
     main(BaseQueue)
+    # main(WSQueue)
     main(CDLL)
     main(BaseQueue)
+    # main(WSQueue)
 end

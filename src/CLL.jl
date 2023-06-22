@@ -13,6 +13,8 @@
 
 module CLL
 
+import ..WorkstealingQueues: push!, pushfirst!, pushlast!, pop!, steal!
+
 # mutable so that we don't get a mutex in WSQueue
 mutable struct WSBuffer{T}
     const buffer::Vector{T}

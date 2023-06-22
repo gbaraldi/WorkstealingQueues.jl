@@ -32,24 +32,24 @@ function push!(W::IntrusiveLinkedListSynchronized{T}, t::T) where T
     end
     return W
 end
-function pushfirst!(W::IntrusiveLinkedListSynchronized{Node{T}}, t::T) where T
+# Modified from Base
+function Base.push!(W::IntrusiveLinkedListSynchronized{Node{T}}, t::T) where T
     lock(W.lock)
     try
-        pushfirst!(W.queue, Node(t))
+        push!(W.queue, Node(t))
     finally
         unlock(W.lock)
     end
     return W
 end
 
-# Modified from Base
-function Base.popfirst!(W::IntrusiveLinkedListSynchronized)
+function Base.pop!(W::IntrusiveLinkedListSynchronized)
     lock(W.lock)
     try
         if isempty(W.queue)
             return nothing
         end
-        return popfirst!(W.queue).item
+        return pop!(W.queue).item
     finally
         unlock(W.lock)
     end
@@ -60,7 +60,7 @@ function steal!(W::IntrusiveLinkedListSynchronized)
         if isempty(W.queue)
             return nothing
         end
-        return pop!(W.queue).item
+        return popfirst!(W.queue).item
     finally
         unlock(W.lock)
     end

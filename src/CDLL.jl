@@ -252,7 +252,9 @@ function poplast!(cdll::CDLL)
     end
 end
 
-steal!(cdll::CDLL) = poplast!(cdll)
+Base.push!(cdll::CDLL{T}, val::T) where {T} = pushfirst!(cdll, val)
+Base.pop!(cdll::CDLL) = poplast!(cdll)
+steal!(cdll::CDLL) = popfirst!(cdll)
 Base.isempty(cdll::CDLL) = !usable(successor(@atomic cdll.header))
 
 export CDLL, pushlast!, pushfirst!, pop!, steal!, isempty
