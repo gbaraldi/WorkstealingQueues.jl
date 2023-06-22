@@ -50,7 +50,7 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
                     @atomic DONE.counter += 1
                 end
                 for _ in 1:N # N steal attempts
-                    victim = rand(1:N) 
+                    victim = rand(1:N)
                     if victim == n
                         continue
                     end
