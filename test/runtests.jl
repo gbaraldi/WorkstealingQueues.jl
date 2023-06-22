@@ -72,7 +72,10 @@ function do_work(n::Int64)
     end
 end
 
-for j in 2:N
+for j in 1:N
+    if rand((false,true))
+        continue
+    end
     for i in 1:rand(100:5000)
         foo = Foo(j)
         push!(initobjs, foo)
