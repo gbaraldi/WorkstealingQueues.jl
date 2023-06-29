@@ -10,22 +10,25 @@ mutable struct Node{T}
     const value::Union{T, Nothing}
     @atomic next::Union{Node{T}, Nothing}
     @atomic prev::Union{Node{T}, Nothing}
-    
+
     Node{T}(value, next, prev) where T = new{T}(value, next, prev)
     function Node(next::Node{T}) where T # Marker
         this = new{T}(nothing, next, nothing)
-        @atomic this.prev = this
+        @atomic :release this.prev = this
         return this
     end
 end
 
 Node(value::T, next, prev) where T = Node{T}(value, next, prev)
 
-get_next(node::Node) = @atomic node.next
-set_next(node::Node, next) = @atomic node.next = next
-get_prev(node::Node) = @atomic node.prev
-set_prev(node::Node, prev) = @atomic node.prev = prev
-cas_next(node::Node, exp::Node, desired::Node) = (@atomicreplace node.next exp => desired)[:success]
+get_next(node::Node) = @atomic :acquire node.next
+set_next(node::Node, next) = @atomic :release node.next = next
+get_prev(node::Node) = @atomic :acquire node.prev
+set_prev(node::Node, prev) = @atomic :release node.prev = prev
+function cas_next(node::Node, exp::Node, desired::Node)
+    _,success = @atomicreplace :acquire_release :monotonic node.next exp => desired
+    return success
+end
 is_special(node::Node) = node.value === nothing
 is_trailer(node::Node) = get_next(node) === nothing
 is_header(node::Node) = get_prev(node) === nothing
@@ -219,18 +222,18 @@ end
 const CDLL = ConcurrentDoublyLinkedList
 
 function Base.pushfirst!(cdll::CDLL{T}, val::T) where {T}
-    while (append!((@atomic cdll.header), val) === nothing)
+    while (append!((@atomic :acquire cdll.header), val) === nothing)
     end
 end
 
 function pushlast!(cdll::CDLL{T}, val::T) where {T}
-    while (prepend!((@atomic cdll.trailer), val) === nothing)
+    while (prepend!((@atomic :acquire cdll.trailer), val) === nothing)
     end
 end
 
 function Base.popfirst!(cdll::CDLL)
     while true
-        n = successor((@atomic cdll.header))
+        n = successor((@atomic :acquire cdll.header))
         if !usable(n)
             return nothing
         end
@@ -242,7 +245,7 @@ end
 
 function poplast!(cdll::CDLL)
     while true
-        n = predecessor((@atomic cdll.trailer))
+        n = predecessor((@atomic :acquire cdll.trailer))
         if !usable(n)
             return nothing
         end
@@ -255,7 +258,7 @@ end
 Base.push!(cdll::CDLL{T}, val::T) where {T} = pushfirst!(cdll, val)
 Base.pop!(cdll::CDLL) = poplast!(cdll)
 steal!(cdll::CDLL) = popfirst!(cdll)
-Base.isempty(cdll::CDLL) = !usable(successor(@atomic cdll.header))
+Base.isempty(cdll::CDLL) = !usable(successor(@atomic :acquire cdll.header))
 
 export CDLL, pushlast!, pushfirst!, pop!, steal!, isempty
 
