@@ -64,10 +64,13 @@ function parallel_job()
         Threads.@spawn pusher()
         Threads.@spawn pusher()
         Threads.@spawn stealer()
+        # @time pusher()
+        # @time pusher()
+        # @time stealer()
     end
 end
 
-parallel_job()
+# parallel_job()
 
 if (popcounter[1].counter+popcounter[2].counter) != pushcounter.counter
     println("Something went wrong")

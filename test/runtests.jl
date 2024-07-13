@@ -92,8 +92,11 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
     end
 
     verbose && print_stats()
-
-    @time parallel_work()
+    if verbose
+        @time parallel_work()
+    else
+        parallel_work()
+    end
 
     for queue in wsqueues
         isempty(queue) || println("queue not empty")
@@ -101,7 +104,13 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
 
     combine_objs()
 
-    length(initobjs) == length(finobjs) || println("lengths not equal")
+    if length(initobjs) != length(finobjs)
+        println("lengths not equal")
+        @show length(initobjs)
+        @show length(finobjs)
+        println()
+    end
+    # length(initobjs) == length(finobjs) || println("lengths not equal")
 
     verbose && print_stats()
 end
@@ -109,8 +118,10 @@ end
 if !isinteractive()
     main(CDLL)
     main(BaseQueue)
-    # main(WSQueue)
+    # main(CLL)
+    main(WSQueue)
+    # main(CLL)
     main(CDLL)
     main(BaseQueue)
-    # main(WSQueue)
+    main(WSQueue)
 end
