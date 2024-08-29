@@ -149,6 +149,6 @@ end
 Base.pop!(q::WSQueue{T}) where T = popfirst!(q)
 @inline __likely(cond::Bool) = ccall("llvm.expect", llvmcall, Bool, (Bool, Bool), cond, true)
 @inline __unlikely(cond::Bool) = ccall("llvm.expect", llvmcall, Bool, (Bool, Bool), cond, false)
-Base.isempty(q::WSQueue) = q.top == q.bottom
+Base.isempty(q::WSQueue) = (q.bottom - q.top) == 0
 
 end #module
