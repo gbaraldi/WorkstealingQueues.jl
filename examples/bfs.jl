@@ -1,7 +1,11 @@
 using WorkstealingQueues
 using Graphs
+import Random
+using CSV
+using TypedTables
+using ThreadPinning
 
-import Base.Threads: nthreads, threadid, @threads
+import Base.Threads: nthreads, threadid, @threads, ngcthreads
 
 
 function bfs_tree(g::AbstractGraph, source::Int)
@@ -87,19 +91,35 @@ function key_sampling(g::AbstractGraph)
     return keys
 end
 
-g6 = smallgraph(:house)
+function measure(g, roots)
+    stats = @timed for source in roots
+        bfs_tree(g, source)
+    end
+    return stats.time, stats.gctime
+end
 
-@time g = Graphs.SimpleGraphs.kronecker(16, 16) # 20, 16 is more interesting
+pinthreads(:cores, threadpool=:all)
+
+machine = Libc.gethostname()
+setting = "kro_20_16.lgz"
+
+g = loadgraph(setting)
+Random.seed!(1234);
 roots = key_sampling(g)
 
-@time for source in roots
-    bfs_tree(g, source)
- end
-# g = Graphs.SimpleGraphs.kronecker(SCALE, edgefactor, A=0.57, B=0.19, C=0.19; rng=nothing, seed=nothing)
+h = hash(roots)
+N = nthreads()
+N_gc = ngcthreads()
+measure(g, [first(roots)])
+t,t2 = measure(g, roots)
 
-# using GraphIO
-# using GraphIO.EdgeList
+if isfile("results.csv")
+    table = CSV.read("results.csv", Table)
+else
+    table = Table(machine=String[], setting=String[], hash=UInt64[], threads=Int[], gc_threads=Int[], time=Float64[], gctime=Float64[])
+end
 
-# g = loadgraph(
-#     "large_twitch_edges.csv", "twitch user network", EdgeListFormat()
-# )
+row = (; machine, setting, hash=h, threads=N, gc_threads=N_gc, time=t, gctime=t2)
+push!(table, row)
+
+CSV.write("results.csv", table)
