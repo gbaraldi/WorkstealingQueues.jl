@@ -64,6 +64,9 @@ function Base.copyto!(dst::WSBuffer{T}, src::WSBuffer{T}, top, bottom) where T
     end
 end
 
+const CACHE_LINE=64 # hardware_destructive_interference
+
+
 """
     WSQueue{T}
 
@@ -73,13 +76,20 @@ Work-stealing queue after Chase & Le.
     popfirst! and push! are only allowed to be called from owner.
 """
 mutable struct WSQueue{T}
-    @atomic top::Int64
+    @atomic top::Int64 # 8 bytes
+    __align::NTuple{CACHE_LINE-sizeof(Int64), UInt8}
     @atomic bottom::Int64
+    __align2::NTuple{CACHE_LINE-sizeof(Int64), UInt8}
     @atomic buffer::WSBuffer{T}
     function WSQueue{T}(capacity = 64) where T
-        new(1, 1, WSBuffer{T}(capacity))
+        new(1, ntuple(Returns(UInt8(0)), Val(CACHE_LINE-sizeof(Int64))),
+            1, ntuple(Returns(UInt8(0)), Val(CACHE_LINE-sizeof(Int64))),
+            WSBuffer{T}(capacity))
     end
 end
+@assert Base.fieldoffset(WSQueue{Int64}, 1) == 0
+@assert Base.fieldoffset(WSQueue{Int64}, 3) == CACHE_LINE
+@assert Base.fieldoffset(WSQueue{Int64}, 5) == 2*CACHE_LINE
 
 # pushBottom
 function Base.push!(q::WSQueue{T}, v::T) where T
