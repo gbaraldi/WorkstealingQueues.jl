@@ -15,6 +15,21 @@ module CLL
 
 import ..WorkstealingQueues: push!, pushfirst!, pushlast!, pop!, steal!
 
+if Sys.ARCH == :x86_64
+    # https://github.com/llvm/llvm-project/pull/106555
+    fence() = Base.llvmcall(
+        (raw"""
+        define void @fence() #0 {
+        entry:
+            tail call void asm sideeffect "lock orq $$0 , (%rsp)", ""(); should this have ~{memory}
+            ret void
+        }
+        attributes #0 = { alwaysinline }
+        """, "fence"), Nothing, Tuple{})
+else
+    fence() = Core.Intrinsics.atomic_fence(:sequentially_consistent)
+end
+
 # mutable so that we don't get a mutex in WSQueue
 mutable struct WSBuffer{T}
     const buffer::AtomicMemory{T}
@@ -105,7 +120,7 @@ function Base.push!(q::WSQueue{T}, v::T) where T
         buffer = new_buffer # Le does buffer = @atomic :monotonic q.buffer
     end
     @atomic :monotonic buffer[bottom] = v
-    Core.Intrinsics.atomic_fence(:release)
+    fence()
     @atomic :monotonic q.bottom = bottom + 1
     return nothing
 end
@@ -115,9 +130,7 @@ function Base.popfirst!(q::WSQueue{T}) where T
     bottom = (@atomic :monotonic q.bottom) - 1
     buffer =  @atomic :monotonic q.buffer
     @atomic :monotonic q.bottom = bottom
-
-    Core.Intrinsics.atomic_fence(:sequentially_consistent) # TODO slow on AMD
-
+    fence()
     top = @atomic :monotonic q.top
 
     size = bottom - top + 1
@@ -143,7 +156,7 @@ end
 
 function steal!(q::WSQueue{T}) where T
     top    = @atomic :acquire q.top
-    Core.Intrinsics.atomic_fence(:sequentially_consistent)
+    fence()
     bottom = @atomic :acquire q.bottom
     size = bottom - top
     if __likely(size > 0)
