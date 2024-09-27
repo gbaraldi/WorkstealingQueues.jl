@@ -106,6 +106,15 @@ end
 @assert Base.fieldoffset(WSQueue{Int64}, 3) == CACHE_LINE
 @assert Base.fieldoffset(WSQueue{Int64}, 5) == 2*CACHE_LINE
 
+@noinline function grow!(q::WSQueue{T}, buffer, top, bottom) where T
+    new_buffer = WSBuffer{T}(2*buffer.capacity)
+    copyto!(new_buffer, buffer, top, bottom)
+    @atomic :release q.buffer = new_buffer
+    return new_buffer
+end
+
+# accessing q.buffer requires a GC frame :/
+
 # pushBottom
 function Base.push!(q::WSQueue{T}, v::T) where T
     bottom = @atomic :monotonic q.bottom
@@ -114,10 +123,7 @@ function Base.push!(q::WSQueue{T}, v::T) where T
 
     size = bottom-top
     if __unlikely(size > (buffer.capacity - 1)) # Chase-Lev has size >= (buf.capacity - 1) || Le has size > (buf.capacity - 1)
-        new_buffer = WSBuffer{T}(2*buffer.capacity)
-        copyto!(new_buffer, buffer, top, bottom)
-        @atomic :release q.buffer = new_buffer
-        buffer = new_buffer # Le does buffer = @atomic :monotonic q.buffer
+        buffer = grow!(q, buffer, top, bottom) # Le does buffer = @atomic :monotonic q.buffer
     end
     @atomic :monotonic buffer[bottom] = v
     fence()
