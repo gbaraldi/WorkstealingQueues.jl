@@ -1,0 +1,10 @@
+[deps]
+CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
+Graphs = "86223c79-3864-5bf0-83f7-82e725a168b6"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+ThreadPinning = "811555cd-349b-4f26-b7bc-1f208b848042"
+TypedTables = "9d95f2ec-7b3d-5a63-8d20-e2491e220bb9"
+WorkstealingQueues = "5de86365-37b3-4156-83c9-8067376b4c4f"
+
+[sources]
+WorkstealingQueues = {path = ".."}

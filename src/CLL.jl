@@ -15,6 +15,21 @@ module CLL
 
 import ..WorkstealingQueues: push!, pushfirst!, pushlast!, pop!, steal!
 
+if Sys.ARCH == :x86_64
+    # https://github.com/llvm/llvm-project/pull/106555
+    fence() = Base.llvmcall(
+        (raw"""
+        define void @fence() #0 {
+        entry:
+            tail call void asm sideeffect "lock orq $$0 , (%rsp)", ""(); should this have ~{memory}
+            ret void
+        }
+        attributes #0 = { alwaysinline }
+        """, "fence"), Nothing, Tuple{})
+else
+    fence() = Core.Intrinsics.atomic_fence(:sequentially_consistent)
+end
+
 # mutable so that we don't get a mutex in WSQueue
 mutable struct WSBuffer{T}
     const buffer::AtomicMemory{T}
@@ -53,12 +68,19 @@ function Base.replaceindex_atomic!(buf::WSBuffer{T}, success_order::Symbol, fail
     @inbounds Base.replaceindex_atomic!(buf.buffer, success_order, fail_order, expected, desired, ((idx - 1) & buf.mask) + 1)
 end
 
-function Base.copyto!(dst::WSBuffer{T}, src::WSBuffer{T}) where T
+function Base.copyto!(dst::WSBuffer{T}, src::WSBuffer{T}, top, bottom) where T
+    # must use queue indexes. When the queue is in state top=3, bottom=18, capacity=16
+    # the real index of element 18 in the queue is 2, after growing in the new buffer it must be 18
     @assert dst.capacity >= src.capacity
-    for i in eachindex(src.buffer)
-       @inbounds @atomic :monotonic dst.buffer[i] = src.buffer[i]
+    @assert top <= bottom
+    # TODO overflow of bottom?
+    for i in top:bottom
+        @atomic :monotonic dst[i] = @atomic :monotonic src[i]
     end
 end
+
+const CACHE_LINE=64 # hardware_destructive_interference
+
 
 """
     WSQueue{T}
@@ -69,69 +91,88 @@ Work-stealing queue after Chase & Le.
     popfirst! and push! are only allowed to be called from owner.
 """
 mutable struct WSQueue{T}
-    @atomic top::Int64
+    @atomic top::Int64 # 8 bytes
+    __align::NTuple{CACHE_LINE-sizeof(Int64), UInt8}
     @atomic bottom::Int64
+    __align2::NTuple{CACHE_LINE-sizeof(Int64), UInt8}
     @atomic buffer::WSBuffer{T}
     function WSQueue{T}(capacity = 64) where T
-        new(1, 1, WSBuffer{T}(capacity))
+        new(1, ntuple(Returns(UInt8(0)), Val(CACHE_LINE-sizeof(Int64))),
+            1, ntuple(Returns(UInt8(0)), Val(CACHE_LINE-sizeof(Int64))),
+            WSBuffer{T}(capacity))
     end
 end
+@assert Base.fieldoffset(WSQueue{Int64}, 1) == 0
+@assert Base.fieldoffset(WSQueue{Int64}, 3) == CACHE_LINE
+@assert Base.fieldoffset(WSQueue{Int64}, 5) == 2*CACHE_LINE
 
+@noinline function grow!(q::WSQueue{T}, buffer, top, bottom) where T
+    new_buffer = WSBuffer{T}(2*buffer.capacity)
+    copyto!(new_buffer, buffer, top, bottom)
+    @atomic :release q.buffer = new_buffer
+    return new_buffer
+end
+
+# accessing q.buffer requires a GC frame :/
+
+# pushBottom
 function Base.push!(q::WSQueue{T}, v::T) where T
     bottom = @atomic :monotonic q.bottom
     top    = @atomic :acquire   q.top
     buffer = @atomic :monotonic q.buffer
 
-    # add unlikely
-    if __unlikely(bottom - top > (buffer.capacity - 1))
-        # @debug "Growing WS buffer" bottom top capacity = buffer.capacity
-        new_buffer = WSBuffer{T}(2*buffer.capacity)
-        copyto!(new_buffer, buffer) # TODO only copy active range?
-        @atomic :release q.buffer = new_buffer
-        buffer = new_buffer
+    size = bottom-top
+    if __unlikely(size > (buffer.capacity - 1)) # Chase-Lev has size >= (buf.capacity - 1) || Le has size > (buf.capacity - 1)
+        buffer = grow!(q, buffer, top, bottom) # Le does buffer = @atomic :monotonic q.buffer
     end
-    # @show bottom
     @atomic :monotonic buffer[bottom] = v
-    Core.Intrinsics.atomic_fence(:release)
+    fence()
     @atomic :monotonic q.bottom = bottom + 1
     return nothing
 end
 
+# popBottom / take
 function Base.popfirst!(q::WSQueue{T}) where T
     bottom = (@atomic :monotonic q.bottom) - 1
     buffer =  @atomic :monotonic q.buffer
     @atomic :monotonic q.bottom = bottom
-
-    Core.Intrinsics.atomic_fence(:sequentially_consistent) # TODO slow on AMD
-
+    fence()
     top = @atomic :monotonic q.top
 
-    if __likely(top <= bottom)
+    size = bottom - top + 1
+    if __likely(size > 0)
+        # Non-empty queue
         v = @atomic :monotonic buffer[bottom]
-        if top == bottom
-            _, success = @atomicreplace q.top top => top+1
+        if size == 1
+            # Single last element in queue
+            _, success = @atomicreplace :sequentially_consistent :monotonic q.top top => top + 1
             @atomic :monotonic q.bottom = bottom + 1
             if !success
-                return nothing # failed
+                # Failed race
+                return nothing
             end
         end
         return v
     else
+        # Empty queue
         @atomic :monotonic q.bottom = bottom + 1
-        return nothing # failed
+        return nothing
     end
 end
 
 function steal!(q::WSQueue{T}) where T
     top    = @atomic :acquire q.top
-    Core.Intrinsics.atomic_fence(:sequentially_consistent)
+    fence()
     bottom = @atomic :acquire q.bottom
-    if top < bottom
-        buffer = @atomic :monotonic q.buffer
+    size = bottom - top
+    if __likely(size > 0)
+        # Non-empty queue
+        buffer = @atomic :acquire q.buffer # consume in Le
         v = @atomic :monotonic buffer[top]
-        _, success = @atomicreplace q.top top => top+1
+        _, success = @atomicreplace :sequentially_consistent :monotonic q.top top => top+1
         if !success
-            return nothing # failed
+            # Failed race
+            return nothing
         end
         return v
     end
@@ -141,6 +182,6 @@ end
 Base.pop!(q::WSQueue{T}) where T = popfirst!(q)
 @inline __likely(cond::Bool) = ccall("llvm.expect", llvmcall, Bool, (Bool, Bool), cond, true)
 @inline __unlikely(cond::Bool) = ccall("llvm.expect", llvmcall, Bool, (Bool, Bool), cond, false)
-Base.isempty(q::WSQueue) = q.top == q.bottom
+Base.isempty(q::WSQueue) = (q.bottom - q.top) == 0
 
 end #module

@@ -10,7 +10,7 @@ end
 
 const pushcounter = Counter(0)
 const popcounter = (Counter(0), Counter(0))
-const wsqueue = CDLL{Foo}()
+const wsqueue = WSQueue{Foo}()
 const objvecs = (Vector{Foo}(), Vector{Foo}())
 const initobjs = Vector{Foo}()
 const finobjs = Vector{Foo}()
@@ -22,14 +22,14 @@ for i in 1:5000
     foo = Foo(rand() > 0.8)
     push!(initobjs, foo)
     @atomic :monotonic pushcounter.counter += 1
-    pushfirst!(wsqueue, foo)
+    push!(wsqueue, foo)
 end
 
 function pusher()
     for i in 1:5000
         usleep(50)
         foo = Foo(rand() > 0.51)
-        pushfirst!(wsqueue, foo)
+        push!(wsqueue, foo)
         @atomic :monotonic pushcounter.counter += 1
     end
     done[] = 1
@@ -61,16 +61,23 @@ end
 
 function parallel_job()
     @sync begin
+        # WSQueue only one thread is allowed to push and pop, everyone is allowed to steal
         Threads.@spawn pusher()
-        Threads.@spawn pusher()
+        # Threads.@spawn pusher()
         Threads.@spawn stealer()
+        # Threads.@spawn stealer()
         # @time pusher()
         # @time pusher()
         # @time stealer()
     end
 end
 
-# parallel_job()
+parallel_job()
+
+@show popcounter[1].counter
+@show popcounter[2].counter
+@show pushcounter.counter
+
 
 if (popcounter[1].counter+popcounter[2].counter) != pushcounter.counter
     println("Something went wrong")
