@@ -1,14 +1,17 @@
 using WorkstealingQueues
-
+using Random
 mutable struct Foo
+    @atomic next_atomic::Any
+    @atomic prev_atomic::Any
     origin::Int
 end
 
+Foo(origin::Int) = Foo(nothing, nothing, origin)
 mutable struct Counter
     @atomic counter::Int64
 end
 
-function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
+function main(::Type{Queue}, N = Threads.nthreads(); verbose=true) where Queue
     pushcounter = ntuple(_->Counter(0), N)
     popcounter  = ntuple(_->Counter(0), N)
     wsqueues    = ntuple(_->Queue{Foo}(), N)
@@ -71,11 +74,12 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
         end
     end
 
+    Random.seed!(1234)
     for j in 1:N
         if rand((false,true))
             continue
         end
-        for i in 1:rand(100:5000)
+        for i in 1:rand(100000:500000)
             foo = Foo(j)
             push!(initobjs, foo)
             @atomic  pushcounter[j].counter += 1
@@ -91,7 +95,6 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
         end
     end
 
-    verbose && print_stats()
     if verbose
         @time parallel_work()
     else
@@ -116,10 +119,21 @@ function main(::Type{Queue}, N = Threads.nthreads(); verbose=false) where Queue
 end
 
 if !isinteractive()
+    println("Running tests...")
+    println("CDLL")
     main(CDLL)
+    println("BaseQueue")
     main(BaseQueue)
+    println("WSQueue")
     main(WSQueue)
+    println("IntrusiveCDLL")
+    main(IntrusiveCDLL)
+    println("CDLL")
     main(CDLL)
+    println("BaseQueue")
     main(BaseQueue)
+    println("WSQueue")
     main(WSQueue)
+    println("IntrusiveCDLL")
+    main(IntrusiveCDLL)
 end

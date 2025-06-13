@@ -1,6 +1,8 @@
 using WorkstealingQueues
 
 mutable struct Foo
+    @atomic next_atomic::Any
+    @atomic prev_atomic::Any
     should_push::Bool
 end
 
@@ -10,7 +12,7 @@ end
 
 const pushcounter = Counter(0)
 const popcounter = (Counter(0), Counter(0))
-const wsqueue = WSQueue{Foo}()
+const wsqueue = IntrusiveCDLL{Foo}()
 const objvecs = (Vector{Foo}(), Vector{Foo}())
 const initobjs = Vector{Foo}()
 const finobjs = Vector{Foo}()
@@ -19,7 +21,7 @@ const done = Ref(0)
 usleep(x) = @ccall usleep(x::UInt32)::Cint
 
 for i in 1:5000
-    foo = Foo(rand() > 0.8)
+    foo = Foo(nothing,nothing,rand() > 0.8)
     push!(initobjs, foo)
     @atomic :monotonic pushcounter.counter += 1
     push!(wsqueue, foo)
@@ -28,7 +30,7 @@ end
 function pusher()
     for i in 1:5000
         usleep(50)
-        foo = Foo(rand() > 0.51)
+        foo = Foo(nothing,nothing, rand() > 0.51)
         push!(wsqueue, foo)
         @atomic :monotonic pushcounter.counter += 1
     end
@@ -63,7 +65,7 @@ function parallel_job()
     @sync begin
         # WSQueue only one thread is allowed to push and pop, everyone is allowed to steal
         Threads.@spawn pusher()
-        # Threads.@spawn pusher()
+        Threads.@spawn popper()
         Threads.@spawn stealer()
         # Threads.@spawn stealer()
         # @time pusher()

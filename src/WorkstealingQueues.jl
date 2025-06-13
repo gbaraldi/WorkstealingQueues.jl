@@ -23,4 +23,8 @@ include("CLL.jl")
 import .CLL: WSQueue
 export WSQueue
 
+include("intrusive_CDLL.jl")
+import .IntrusiveConcurrentList: IntrusiveCDLL
+export IntrusiveCDLL
+
 end
